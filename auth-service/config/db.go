@@ -1,20 +1,25 @@
 package config
 
 import (
-    "database/sql"
-    "fmt"
-    _ "github.com/lib/pq"
+	"log"
+	"os"
+
+	"github.com/jmoiron/sqlx"
+	_ "github.com/lib/pq"
 )
 
-func ConnectDB() *sql.DB {
-    connStr := "postgres://postgres:password@localhost:5432/helios?sslmode=disable"
+var DB *sqlx.DB
 
-    db, err := sql.Open("postgres", connStr)
-    if err != nil {
-        panic(err)
-    }
+func ConnectDB() {
+	var err error
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		dbURL = "postgres://helios_user:password@localhost:5432/helios?sslmode=disable"
+	}
 
-    fmt.Println("Connected to DB 🚀")
+	DB, err = sqlx.Connect("postgres", dbURL)
 
-    return db
+	if err != nil {
+		log.Fatal("DB connection failed:", err)
+	}
 }

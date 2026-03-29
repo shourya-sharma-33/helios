@@ -1,21 +1,20 @@
 package main
 
 import (
-    "github.com/gin-gonic/gin"
-    "auth-service/config"
+	"auth-service/config"
+	"auth-service/routes"
+
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
-    db := config.ConnectDB()
-    _ = db // avoid unused error
 
-    r := gin.Default()
+	config.ConnectDB()
+	config.ConnectRedis()
 
-    r.GET("/", func(c *gin.Context) {
-        c.JSON(200, gin.H{
-            "message": "Auth service running 🚀",
-        })
-    })
+	r := gin.Default()
 
-    r.Run(":8080")
+	routes.AuthRoutes(r)
+
+	r.Run(":8081")
 }
