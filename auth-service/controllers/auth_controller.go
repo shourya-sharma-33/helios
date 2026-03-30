@@ -2,8 +2,11 @@ package controllers
 
 import (
 	"auth-service/config"
+	"auth-service/models"
 	"auth-service/utils"
 	"encoding/json"
+	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -90,39 +93,138 @@ func Verify(c *gin.Context) {
 	})
 }
 
-// ================= LOGIN =================
+// ================= LOGIN (SEND OTP) =================
 func Login(c *gin.Context) {
 
 	var input struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email    string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required,min=6"`
 	}
 
-	c.ShouldBindJSON(&input)
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
 
-	var hashed string
-	var userID string
+	// 🔥 RATE LIMIT (email + ip)
+	ip := c.ClientIP()
+	rateKey := "login_rate:" + input.Email + ":" + ip
 
-	err := config.DB.QueryRow(`
-		SELECT id, password
+	exists, _ := config.Rdb.Exists(config.Ctx, rateKey).Result()
+	if exists == 1 {
+		c.JSON(429, gin.H{"error": "Too many requests, try later"})
+		return
+	}
+
+	// 🔍 FIND USER
+	var user models.User
+	err := config.DB.Get(&user, `
+		SELECT id, email, password, name
 		FROM users
 		WHERE email=$1
-	`, input.Email).Scan(&userID, &hashed)
+	`, input.Email)
 
 	if err != nil {
-		c.JSON(400, gin.H{"success": false, "error": "Invalid credentials"})
+		c.JSON(400, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
-	if bcrypt.CompareHashAndPassword([]byte(hashed), []byte(input.Password)) != nil {
-		c.JSON(400, gin.H{"success": false, "error": "Invalid credentials"})
+	// 🔐 PASSWORD CHECK
+	err = bcrypt.CompareHashAndPassword(
+		[]byte(user.Password),
+		[]byte(input.Password),
+	)
+
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
-	token, _ := utils.GenerateJWT(userID)
+	// 🔢 GENERATE OTP (6 digit)
+	otp := fmt.Sprintf("%06d", rand.Intn(900000)+100000)
+
+	otpKey := "otp:" + input.Email
+
+	// store in redis (5 min)
+	config.Rdb.Set(config.Ctx, otpKey, otp, 5*time.Minute)
+
+	// set rate limit (1 min)
+	config.Rdb.Set(config.Ctx, rateKey, "1", time.Minute)
+
+	// 📧 SEND EMAIL (or log)
+	fmt.Printf("OTP FOR %s: %s\n", input.Email, otp)
+	utils.SendOTP(input.Email, otp)
 
 	c.JSON(200, gin.H{
-		"success": true,
-		"token":   token,
+		"message": "If email is valid, OTP sent (valid 5 min)",
+	})
+}
+
+// ================= VERIFY OTP + LOGIN COMPLETE =================
+func VerifyOTP(c *gin.Context) {
+
+	var input struct {
+		Email string `json:"email"`
+		OTP   string `json:"otp"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(400, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	if input.Email == "" || input.OTP == "" {
+		c.JSON(400, gin.H{"error": "Provide all fields"})
+		return
+	}
+
+	// 🔍 GET OTP FROM REDIS
+	otpKey := "otp:" + input.Email
+
+	storedOTP, err := config.Rdb.Get(config.Ctx, otpKey).Result()
+	if err != nil {
+		c.JSON(400, gin.H{"error": "OTP expired"})
+		return
+	}
+
+	// ❌ WRONG OTP
+	if storedOTP != input.OTP {
+		c.JSON(400, gin.H{"error": "Invalid OTP"})
+		return
+	}
+
+	// ✅ DELETE OTP
+	config.Rdb.Del(config.Ctx, otpKey)
+
+	// 🔍 FIND USER AGAIN
+	var user models.User
+	err = config.DB.Get(&user, `
+		SELECT id, email, name
+		FROM users
+		WHERE email=$1
+	`, input.Email)
+
+	if err != nil {
+		c.JSON(400, gin.H{"error": "User not found"})
+		return
+	}
+
+	// 🔐 GENERATE TOKENS
+	accessToken, _ := utils.GenerateJWT(user.ID, time.Minute*15)
+	refreshToken, _ := utils.GenerateJWT(user.ID, time.Hour*24*7)
+
+	// 🧠 STORE REFRESH TOKEN IN REDIS (SESSION)
+	refreshKey := "refresh:" + user.ID
+	config.Rdb.Set(config.Ctx, refreshKey, refreshToken, 7*24*time.Hour)
+
+	c.JSON(200, gin.H{
+		"message":       "Login successful",
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"user": gin.H{
+			"id":    user.ID,
+			"name":  user.Name,
+			"email": user.Email,
+		},
 	})
 }

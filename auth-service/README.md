@@ -1,6 +1,6 @@
 # Authentication Service API Documentation
 
-This service handles user registration and authentication using Go, Gin, PostgreSQL, and Redis.
+This service handles user registration and authentication using Go, Gin, PostgreSQL, and Redis. It features a two-step registration (email verification) and a two-step login (OTP via email).
 
 ## Project Structure
 ```text
@@ -60,8 +60,8 @@ Completes registration and saves user to database.
 
 ---
 
-### 3. User Login
-Authenticates an existing user and returns a JWT.
+### 3. User Login (Step 1: Send OTP)
+Authenticates credentials and sends a 6-digit OTP to the user's email.
 
 - **URL:** `/login`
 - **Method:** `POST`
@@ -75,16 +75,47 @@ Authenticates an existing user and returns a JWT.
   ```
 - **Success Response:**
   - **Code:** 200 OK
-  - **Content:** `{"success": true, "token": "JWT_TOKEN_HERE"}`
+  - **Content:** `{"message": "If email is valid, OTP sent (valid 5 min)"}`
 
 ---
 
-### 4. Protected Route
+### 4. Verify OTP (Step 2: Complete Login)
+Verifies the OTP and returns Access and Refresh tokens.
+
+- **URL:** `/verify-otp`
+- **Method:** `POST`
+- **Headers:** `Content-Type: application/json`
+- **Request Body:**
+  ```json
+  {
+    "email": "user@example.com",
+    "otp": "123456"
+  }
+  ```
+- **Success Response:**
+  - **Code:** 200 OK
+  - **Content:**
+    ```json
+    {
+      "message": "Login successful",
+      "access_token": "ACCESS_JWT",
+      "refresh_token": "REFRESH_JWT",
+      "user": {
+        "id": "1",
+        "email": "user@example.com",
+        "name": "Full Name"
+      }
+    }
+    ```
+
+---
+
+### 5. Protected Route
 Example of a route protected by JWT middleware.
 
 - **URL:** `/protected/`
 - **Method:** `GET`
-- **Headers:** `Authorization: Bearer <JWT_TOKEN>`
+- **Headers:** `Authorization: Bearer <ACCESS_JWT>`
 - **Success Response:**
   - **Code:** 200 OK
   - **Content:** `{"message": "Protected route"}`
@@ -121,4 +152,3 @@ This will set up the Auth Service, PostgreSQL, and Redis automatically.
 2. Ensure Postgres and Redis are running locally.
 3. Update database credentials in `config/db.go`.
 4. `go run .`
-

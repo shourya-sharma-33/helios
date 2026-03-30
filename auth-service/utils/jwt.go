@@ -8,12 +8,14 @@ import (
 
 var SECRET = []byte("supersecret")
 
-func GenerateJWT(userID string) (string, error) {
+func GenerateJWT(userID string, duration time.Duration) (string, error) {
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+	claims := jwt.MapClaims{
 		"user_id": userID,
-		"exp":     time.Now().Add(time.Hour * 24).Unix(),
-	})
+		"exp":     time.Now().Add(duration).Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	return token.SignedString(SECRET)
 }

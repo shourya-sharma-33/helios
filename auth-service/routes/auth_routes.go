@@ -12,6 +12,7 @@ func AuthRoutes(r *gin.Engine) {
 	r.POST("/register", controllers.Register)
 	r.GET("/verify/:token", controllers.Verify)
 	r.POST("/login", controllers.Login)
+	r.POST("/verify-otp", controllers.VerifyOTP)
 
 	protected := r.Group("/protected")
 	protected.Use(middleware.AuthMiddleware())
