@@ -1,22 +1,26 @@
 package routes
 
 import (
-	"auth-service/controllers"
+	"auth-service/handlers"
 	"auth-service/middleware"
 
 	"github.com/gin-gonic/gin"
 )
 
 func AuthRoutes(r *gin.Engine) {
+	v1 := r.Group("/api/v1")
+	{
+		v1.POST("/register", handlers.Register)
+		v1.POST("/login", handlers.Login)
+		v1.POST("/verify-otp", handlers.VerifyOTP)
+		v1.POST("/refresh", handlers.RefreshToken)
+		v1.POST("/logout", handlers.Logout)
 
-	r.POST("/register", controllers.Register)
-	r.GET("/verify/:token", controllers.Verify)
-	r.POST("/login", controllers.Login)
-	r.POST("/verify-otp", controllers.VerifyOTP)
-
-	protected := r.Group("/protected")
-	protected.Use(middleware.AuthMiddleware())
-	protected.GET("/", func(c *gin.Context) {
-		c.JSON(200, gin.H{"message": "Protected route"})
-	})
+		// Protected routes
+		protected := v1.Group("/")
+		protected.Use(middleware.AuthMiddleware())
+		{
+			protected.GET("/me", handlers.GetMe)
+		}
+	}
 }

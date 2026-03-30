@@ -1,154 +1,96 @@
-# Authentication Service API Documentation
+# Authentication Service — Final Backend Implementation
 
-This service handles user registration and authentication using Go, Gin, PostgreSQL, and Redis. It features a two-step registration (email verification) and a two-step login (OTP via email).
+This service implements a production-grade, secure authentication flow using **Go**, **Gin**, **GORM**, and **PostgreSQL**. It features a two-step login with OTP and secure session management via HttpOnly cookies.
 
-## Project Structure
+## 🏗️ Project Structure
 ```text
 auth-service/
 ├── main.go
-├── go.mod
 ├── config/
-│   ├── db.go
-│   └── redis.go
+│   └── db.go
 ├── models/
 │   └── user.go
-├── controllers/
-│   └── auth_controller.go
-├── routes/
-│   └── auth_routes.go
+├── handlers/
+│   └── auth.go
 ├── middleware/
-│   └── auth_middleware.go
+│   └── auth.go
 ├── utils/
-│   ├── token.go
 │   ├── jwt.go
-│   └── mailer.go
+│   ├── otp.go
+│   └── hash.go
 ```
 
-## Base URL
-`http://localhost:8081`
+## 📦 Final Backend APIs
+All endpoints are prefixed with `/api/v1`.
 
-## Endpoints
-
-### 1. User Registration
-Initiates registration by sending a verification link (printed to console in dev).
-
-- **URL:** `/register`
-- **Method:** `POST`
-- **Headers:** `Content-Type: application/json`
-- **Request Body:**
-  ```json
-  {
-    "name": "Full Name",
-    "email": "user@example.com",
-    "password": "password123"
-  }
-  ```
-- **Success Response:**
-  - **Code:** 200 OK
-  - **Content:** `{"success": true, "message": "Verification email sent"}`
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/register` | Create a new user account |
+| `POST` | `/login` | Step 1: Validate credentials and send OTP |
+| `POST` | `/verify-otp` | Step 2: Verify OTP and set session cookies |
+| `GET` | `/me` | Get current authenticated user details |
+| `POST` | `/refresh` | Refresh access token using refresh token cookie |
+| `POST` | `/logout` | Clear session cookies and logout |
 
 ---
 
-### 2. Verify Email
-Completes registration and saves user to database.
+## 🚀 How to Run the App
 
-- **URL:** `/verify/:token`
-- **Method:** `GET`
-- **Success Response:**
-  - **Code:** 200 OK
-  - **Content:** `{"success": true, "message": "User verified"}`
-
----
-
-### 3. User Login (Step 1: Send OTP)
-Authenticates credentials and sends a 6-digit OTP to the user's email.
-
-- **URL:** `/login`
-- **Method:** `POST`
-- **Headers:** `Content-Type: application/json`
-- **Request Body:**
-  ```json
-  {
-    "email": "user@example.com",
-    "password": "password123"
-  }
-  ```
-- **Success Response:**
-  - **Code:** 200 OK
-  - **Content:** `{"message": "If email is valid, OTP sent (valid 5 min)"}`
-
----
-
-### 4. Verify OTP (Step 2: Complete Login)
-Verifies the OTP and returns Access and Refresh tokens.
-
-- **URL:** `/verify-otp`
-- **Method:** `POST`
-- **Headers:** `Content-Type: application/json`
-- **Request Body:**
-  ```json
-  {
-    "email": "user@example.com",
-    "otp": "123456"
-  }
-  ```
-- **Success Response:**
-  - **Code:** 200 OK
-  - **Content:**
-    ```json
-    {
-      "message": "Login successful",
-      "access_token": "ACCESS_JWT",
-      "refresh_token": "REFRESH_JWT",
-      "user": {
-        "id": "1",
-        "email": "user@example.com",
-        "name": "Full Name"
-      }
-    }
+### 1. Using Docker (Recommended)
+This is the easiest way to start the app along with its database.
+1.  Ensure **Docker Desktop** is running.
+2.  Open your terminal in the `auth-service/` directory.
+3.  Run:
+    ```bash
+    docker-compose up --build
     ```
+    *The app will be available at `http://localhost:8081`.*
 
 ---
 
-### 5. Protected Route
-Example of a route protected by JWT middleware.
+## 🧪 How to Test the App (Step-by-Step)
 
-- **URL:** `/protected/`
-- **Method:** `GET`
-- **Headers:** `Authorization: Bearer <ACCESS_JWT>`
-- **Success Response:**
-  - **Code:** 200 OK
-  - **Content:** `{"message": "Protected route"}`
+Follow these steps in a **separate terminal** to test the full authentication flow.
 
-## Database Schema
-```sql
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    username VARCHAR(255) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    password TEXT NOT NULL
-);
+### Step 1: Register a User
+```powershell
+curl.exe -X POST http://localhost:8081/api/v1/register `
+-H "Content-Type: application/json" `
+-d '{"name":"Test User","email":"test@test.com","password":"password123"}'
 ```
 
-## Requirements
-- **PostgreSQL**: Database `helios` must exist.
-- **Redis**: Must be running on `localhost:6379`.
+### Step 2: Login (Triggers OTP)
+```powershell
+curl.exe -X POST http://localhost:8081/api/v1/login `
+-H "Content-Type: application/json" `
+-d '{"email":"test@test.com","password":"password123"}'
+```
+👉 **IMPORTANT:** Look at the terminal where Docker is running. You will see a line like `OTP: 123456`. Copy that code.
 
-## Setup & Running
+### Step 3: Verify OTP (Sets Cookies)
+Replace `<OTP_CODE>` with the code from the logs.
+```powershell
+curl.exe -X POST http://localhost:8081/api/v1/verify-otp `
+-H "Content-Type: application/json" `
+-d '{"email":"test@test.com","otp":"<OTP_CODE>"}' `
+-c cookies.txt
+```
+*The `-c cookies.txt` flag saves the secure session cookies to a file.*
 
-### Using Docker (Recommended)
-This will set up the Auth Service, PostgreSQL, and Redis automatically.
+### Step 4: Get Your Profile (Authorized)
+```powershell
+curl.exe http://localhost:8081/api/v1/me -b cookies.txt
+```
+*The `-b cookies.txt` flag sends the cookies back to the server for authentication.*
 
-1. Ensure Docker Desktop is running.
-2. From the `auth-service/` directory, run:
-   ```bash
-   docker-compose up --build
-   ```
-3. The API will be available at `http://localhost:8081`.
+### Step 5: Logout
+```powershell
+curl.exe -X POST http://localhost:8081/api/v1/logout -b cookies.txt -c cookies.txt
+```
 
-### Manual Setup
-1. `go mod tidy` to install dependencies.
-2. Ensure Postgres and Redis are running locally.
-3. Update database credentials in `config/db.go`.
-4. `go run .`
+---
+
+## 💀 Final Result Summary
+- **No Frontend Needed**: Fully testable via CLI.
+- **Production-Style**: Secure HttpOnly cookies and JWT Refresh flow.
+- **OTP Security**: Prevents unauthorized access even if password is leaked.

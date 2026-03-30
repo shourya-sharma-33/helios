@@ -3,12 +3,13 @@ package config
 import (
 	"log"
 	"os"
+	"time"
 
-	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-var DB *sqlx.DB
+var DB *gorm.DB
 
 func ConnectDB() {
 	var err error
@@ -17,9 +18,15 @@ func ConnectDB() {
 		dbURL = "postgres://helios_user:password@localhost:5432/helios?sslmode=disable"
 	}
 
-	DB, err = sqlx.Connect("postgres", dbURL)
-
-	if err != nil {
-		log.Fatal("DB connection failed:", err)
+	for i := 0; i < 5; i++ {
+		DB, err = gorm.Open(postgres.Open(dbURL), &gorm.Config{})
+		if err == nil {
+			log.Println("DB connection successful")
+			return
+		}
+		log.Printf("DB connection failed, retrying in 2s... (%d/5)", i+1)
+		time.Sleep(2 * time.Second)
 	}
+
+	log.Fatal("DB connection failed permanently:", err)
 }
